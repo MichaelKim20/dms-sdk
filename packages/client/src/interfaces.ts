@@ -584,8 +584,8 @@ export enum MobileType {
 }
 
 export enum LoyaltyNetworkID {
-    LYT,
-    ACC
+    KIOS_TESTNET = 5,
+    KIOS_MAINNET = 6
 }
 
 export interface IChainInfo {
@@ -594,12 +594,82 @@ export interface IChainInfo {
         name: string;
         chainId: number;
         ensAddress: string;
-        transferFee: BigNumber;
-        bridgeFee: BigNumber;
+        chainTransferFee: BigNumber;
+        chainBridgeFee: BigNumber;
+        loyaltyTransferFee: BigNumber;
+        loyaltyBridgeFee: BigNumber;
     };
     contract: {
         token: string;
         chainBridge: string;
         loyaltyBridge: string;
     };
+}
+
+export interface ITokenInfo {
+    symbol: string;
+    name: string;
+    decimals: number;
+}
+
+export interface IExchangeRate {
+    token: {
+        symbol: string;
+        value: BigNumber;
+    };
+    currency: {
+        symbol: string;
+        value: BigNumber;
+    };
+}
+
+export interface IBalance {
+    point: {
+        balance: BigNumber;
+        value: BigNumber;
+    };
+    token: {
+        balance: BigNumber;
+        value: BigNumber;
+    };
+}
+
+export interface IProtocolFees {
+    transfer: BigNumber;
+    withdraw: BigNumber;
+    deposit: BigNumber;
+}
+
+export interface IShopInfo {
+    shopId: string;
+    name: string;
+    currency: string;
+    status: number;
+    account: string;
+    delegator: string;
+    providedAmount: BigNumber;
+    usedAmount: BigNumber;
+    refundedAmount: BigNumber;
+    refundableAmount: BigNumber;
+    refundableToken: BigNumber;
+}
+
+export interface IAccountSummary {
+    account: string;
+    tokenInfo: ITokenInfo;
+    exchangeRate: IExchangeRate;
+    ledger: IBalance;
+    mainChain: IBalance;
+    sideChain: IBalance;
+    protocolFees: IProtocolFees;
+}
+
+export interface IShopSummary {
+    shopInfo: IShopInfo;
+    tokenInfo: ITokenInfo;
+    exchangeRate: IExchangeRate;
+    ledger: IBalance;
+    mainChain: IBalance;
+    sideChain: IBalance;
+    protocolFees: IProtocolFees;
 }

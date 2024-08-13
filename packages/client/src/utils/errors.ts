@@ -1,3 +1,4 @@
+// @ts-ignore
 import { UnfetchResponse } from "unfetch";
 import { BigNumber } from "@ethersproject/bignumber";
 
@@ -23,6 +24,12 @@ export class BadRequestError extends NetworkError {
     constructor(status: number, statusText: string) {
         super(status, statusText);
         this.name = "BadRequestError";
+    }
+}
+
+export class InvalidPhoneNumber extends Error {
+    constructor() {
+        super("Invalid phone number");
     }
 }
 
@@ -84,6 +91,12 @@ export class BodyParseError extends ClientError {
     constructor(res: UnfetchResponse) {
         super(res);
         this.message = "Error parsing body";
+    }
+}
+
+export class NoNetwork extends Error {
+    constructor() {
+        super("A network is needed");
     }
 }
 
@@ -216,5 +229,11 @@ export class FailedRemovePhoneInfoError extends Error {
 export class FailedTransactionError extends Error {
     constructor() {
         super("Failed to process transaction");
+    }
+}
+
+export class NoRelayEndpointError extends Error {
+    constructor() {
+        super("Endpoint of relay is needed");
     }
 }

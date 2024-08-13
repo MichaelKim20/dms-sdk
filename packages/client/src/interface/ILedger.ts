@@ -1,4 +1,4 @@
-import { IClientCore, IClientHttpCore } from "../client-common";
+import { IClientCore } from "../client-common";
 import {
     ApproveCancelPaymentValue,
     ApproveNewPaymentValue,
@@ -16,7 +16,8 @@ import {
     WaiteBridgeStepValue,
     WithdrawStepValue,
     WithdrawViaBridgeStepValue,
-    LedgerAction
+    LedgerAction,
+    IAccountSummary
 } from "../interfaces";
 import { BigNumber } from "@ethersproject/bignumber";
 import { BytesLike } from "@ethersproject/bytes";
@@ -27,14 +28,14 @@ export interface ILedger {
 }
 
 /** Defines the shape of the general purpose Client class */
-export interface ILedgerMethods extends IClientCore, IClientHttpCore {
-    // Common
-    getNonceOfLedger: (account: string) => Promise<BigNumber>;
+export interface ILedgerMethods extends IClientCore {
+    getAccount: () => Promise<string>;
 
     // Balance
-    getUnPayablePointBalance: (phone: string) => Promise<BigNumber>;
+    getUnPayablePointBalance: (phoneHash: string) => Promise<BigNumber>;
     getPointBalance: (account: string) => Promise<BigNumber>;
     getTokenBalance: (account: string) => Promise<BigNumber>;
+    getSummary: (account: string) => Promise<IAccountSummary>;
 
     // Payment
     getFeeRate: () => Promise<number>;
@@ -74,6 +75,7 @@ export interface ILedgerMethods extends IClientCore, IClientHttpCore {
 
     // Mobile
     registerMobileToken: (token: string, language: string, os: string, type: MobileType) => Promise<void>;
+    isExistsMobileToken: (type: MobileType) => Promise<boolean>;
     removePhoneInfo: () => AsyncGenerator<RemovePhoneInfoStepValue>;
 
     // Main Chain

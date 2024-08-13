@@ -32,20 +32,20 @@ describe("Shop", () => {
     });
 
     beforeAll(async () => {
-        contextParams.signer = shopWallet;
+        contextParams.privateKey = shopWallet.privateKey;
         const ctx = new Context(contextParams);
         client = new Client(ctx);
     });
 
     it("Server Health Checking", async () => {
-        const isUp = await client.shop.isRelayUp();
+        const isUp = await client.shop.relay.isUp();
         expect(isUp).toEqual(true);
     });
 
     it("Create available ID", async () => {
         // 내부에 랜덤으로 32 Bytes 를 생성하여 ID를 생성하므로 무한반복될 가능성이 극히 낮음
         while (true) {
-            shopData.shopId = ContractUtils.getShopId(shopData.wallet.address, LoyaltyNetworkID.ACC);
+            shopData.shopId = ContractUtils.getShopId(shopData.wallet.address, LoyaltyNetworkID.KIOS_TESTNET);
             if (await client.shop.isAvailableId(shopData.shopId)) break;
         }
     });
@@ -107,7 +107,7 @@ describe("Shop", () => {
         let detail = await client.shop.getTaskDetail(taskId);
 
         // Approve New
-        client.useSigner(shopWallet);
+        client.usePrivateKey(shopWallet.privateKey);
         for await (const step of client.shop.approveUpdate(taskId, shopData.shopId, true)) {
             switch (step.key) {
                 case NormalSteps.PREPARED:
@@ -161,7 +161,7 @@ describe("Shop", () => {
         let detail = await client.shop.getTaskDetail(taskId);
 
         // Approve New
-        client.useSigner(shopWallet);
+        client.usePrivateKey(shopWallet.privateKey);
         for await (const step of client.shop.approveStatus(taskId, shopData.shopId, true)) {
             switch (step.key) {
                 case NormalSteps.PREPARED:

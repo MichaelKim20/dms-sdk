@@ -1,14 +1,7 @@
-import {
-    ClientCore,
-    Context,
-    IClientHttpCore,
-    LIVE_CONTRACTS,
-    SupportedNetwork,
-    SupportedNetworkArray
-} from "../../client-common";
+import { ClientCore, Context } from "../../client-common";
 import { Shop, Shop__factory } from "dms-contracts-lib-v2";
 import { Provider } from "@ethersproject/providers";
-import { NoProviderError, NoSignerError, UnsupportedNetworkError } from "dms-sdk-common-v2";
+import { NoProviderError, NoSignerError } from "dms-sdk-common-v2";
 import { ContractUtils } from "../../utils/ContractUtils";
 import {
     AddShopStepValue,
@@ -22,12 +15,12 @@ import {
     RemoveDelegateStepValue,
     RefundShopStepValue,
     ShopAction,
-    ShopRefundableData
+    ShopRefundableData,
+    IShopSummary
 } from "../../interfaces";
-import { FailedAddShopError, FailedApprovePayment, InternalServerError, NoHttpModuleError } from "../../utils/errors";
+import { FailedAddShopError, FailedApprovePayment, InternalServerError } from "../../utils/errors";
 import { Network } from "../../client-common/interfaces/network";
 import { findLog } from "../../client-common/utils";
-import { getNetwork } from "../../utils/Utilty";
 
 import { BigNumber } from "@ethersproject/bignumber";
 import { ContractTransaction } from "@ethersproject/contracts";
@@ -39,63 +32,20 @@ import { AddressZero } from "@ethersproject/constants";
 /**
  * 상점의 정보를 추가/수정하는 기능과 정산의 요청/확인이 포함된 클래스이다.
  */
-export class ShopMethods extends ClientCore implements IShopMethods, IClientHttpCore {
-    private relayEndpoint: string | URL | undefined;
-
+export class ShopMethods extends ClientCore implements IShopMethods {
     constructor(context: Context) {
         super(context);
-        if (context.relayEndpoint) {
-            this.relayEndpoint = context.relayEndpoint;
-        }
         Object.freeze(ShopMethods.prototype);
         Object.freeze(this);
     }
 
+    public async getAccount(): Promise<string> {
+        const signer = this.web3.getConnectedSigner();
+        if (!signer) throw new NoSignerError();
+        return await signer.getAddress();
+    }
+
     // region Common
-    /**
-     * 릴레이 서버가 정상적인 상태인지 검사한다.
-     * @return {Promise<boolean>} 이 값이 true 이면 릴레이 서버가 정상이다.
-     */
-    public async isRelayUp(): Promise<boolean> {
-        try {
-            const res = await Network.get(await this.getEndpoint("/"));
-            return res === "OK";
-        } catch {
-            return false;
-        }
-    }
-
-    /**
-     * 릴레이 서버의 주소를 이용하여 엔드포인트를 생성한다
-     * @param path 경로
-     * @return {Promise<URL>} 엔드포인트의 주소
-     */
-    public async getEndpoint(path: string): Promise<URL> {
-        if (!path) throw Error("Not path");
-        let endpoint;
-        if (this.relayEndpoint) {
-            endpoint = this.relayEndpoint;
-        } else {
-            const provider = this.web3.getProvider();
-            if (!provider) throw new NoProviderError();
-
-            const network = await provider.getNetwork();
-            const networkName = network.name as SupportedNetwork;
-            if (!SupportedNetworkArray.includes(networkName)) {
-                throw new UnsupportedNetworkError(networkName);
-            }
-            endpoint = LIVE_CONTRACTS[networkName].relayEndpoint;
-        }
-
-        if (!endpoint) throw new NoHttpModuleError();
-
-        const newUrl = typeof endpoint === "string" ? new URL(endpoint) : endpoint;
-        if (newUrl && !newUrl?.pathname.endsWith("/")) {
-            newUrl.pathname += "/";
-        }
-        return new URL(path, newUrl);
-    }
-
     /**
      * 상점의 정보를 제공한다.
      * @param shopId
@@ -104,12 +54,6 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
     public async getShopInfo(shopId: BytesLike): Promise<ShopData> {
         const provider = this.web3.getProvider() as Provider;
         if (!provider) throw new NoProviderError();
-
-        const network = getNetwork((await provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
-        }
 
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), provider);
         const shopInfo = await shopContract.shopOf(shopId);
@@ -130,6 +74,78 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
         };
     }
 
+    public async getSummary(shopId: BytesLike): Promise<IShopSummary> {
+        const res = await Network.get(await this.relay.getEndpoint(`/v1/summary/shop/${shopId}`));
+        if (res.code !== 0 || res.data === undefined) {
+            throw new InternalServerError(res?.error?.message ?? "");
+        }
+
+        return {
+            shopInfo: {
+                shopId: res.data.shopInfo.shopId,
+                name: res.data.shopInfo.name,
+                currency: res.data.shopInfo.currency,
+                status: res.data.shopInfo.status,
+                account: res.data.shopInfo.account,
+                delegator: res.data.shopInfo.delegator,
+                providedAmount: BigNumber.from(res.data.shopInfo.providedAmount),
+                usedAmount: BigNumber.from(res.data.shopInfo.usedAmount),
+                refundedAmount: BigNumber.from(res.data.shopInfo.refundedAmount),
+                refundableAmount: BigNumber.from(res.data.shopInfo.refundableAmount),
+                refundableToken: BigNumber.from(res.data.shopInfo.refundableToken)
+            },
+            tokenInfo: {
+                symbol: res.data.tokenInfo.symbol,
+                name: res.data.tokenInfo.name,
+                decimals: res.data.tokenInfo.decimals
+            },
+            exchangeRate: {
+                token: {
+                    symbol: res.data.exchangeRate.token.symbol,
+                    value: BigNumber.from(res.data.exchangeRate.token.value)
+                },
+                currency: {
+                    symbol: res.data.exchangeRate.currency.symbol,
+                    value: BigNumber.from(res.data.exchangeRate.currency.value)
+                }
+            },
+            ledger: {
+                point: {
+                    balance: BigNumber.from(res.data.ledger.point.balance),
+                    value: BigNumber.from(res.data.ledger.point.value)
+                },
+                token: {
+                    balance: BigNumber.from(res.data.ledger.token.balance),
+                    value: BigNumber.from(res.data.ledger.token.value)
+                }
+            },
+            mainChain: {
+                point: {
+                    balance: BigNumber.from(res.data.mainChain.point.balance),
+                    value: BigNumber.from(res.data.mainChain.point.value)
+                },
+                token: {
+                    balance: BigNumber.from(res.data.mainChain.token.balance),
+                    value: BigNumber.from(res.data.mainChain.token.value)
+                }
+            },
+            sideChain: {
+                point: {
+                    balance: BigNumber.from(res.data.sideChain.point.balance),
+                    value: BigNumber.from(res.data.sideChain.point.value)
+                },
+                token: {
+                    balance: BigNumber.from(res.data.sideChain.token.balance),
+                    value: BigNumber.from(res.data.sideChain.token.value)
+                }
+            },
+            protocolFees: {
+                transfer: BigNumber.from(res.data.protocolFees.transfer),
+                withdraw: BigNumber.from(res.data.protocolFees.withdraw),
+                deposit: BigNumber.from(res.data.protocolFees.deposit)
+            }
+        };
+    }
     // endregion
 
     // region Add
@@ -137,12 +153,6 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
     public async isAvailableId(shopId: BytesLike): Promise<boolean> {
         const provider = this.web3.getProvider() as Provider;
         if (!provider) throw new NoProviderError();
-
-        const network = getNetwork((await provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
-        }
 
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), provider);
         return await shopContract.isAvailableId(shopId);
@@ -163,17 +173,11 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             throw new NoProviderError();
         }
 
-        const network = getNetwork((await signer.provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
-        }
-
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), signer);
         let contractTx: ContractTransaction;
         const account: string = await signer.getAddress();
         const nonce = await shopContract.nonceOf(account);
-        const message = ContractUtils.getShopAccountMessage(shopId, account, nonce, network.chainId);
+        const message = ContractUtils.getShopAccountMessage(shopId, account, nonce, this.web3.getChainId());
         const signature = await ContractUtils.signMessage(signer, message);
 
         const param = {
@@ -193,7 +197,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             signature
         };
 
-        const res = await Network.post(await this.getEndpoint("/v1/shop/add"), param);
+        const res = await Network.post(await this.relay.getEndpoint("/v1/shop/add"), param);
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }
@@ -223,7 +227,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
     // region Update
 
     public async getTaskDetail(taskId: BytesLike): Promise<ShopDetailData> {
-        const res = await Network.get(await this.getEndpoint("/v1/shop/task"), {
+        const res = await Network.get(await this.relay.getEndpoint("/v1/shop/task"), {
             taskId: taskId.toString()
         });
         if (res.code !== 0 || res.data === undefined) {
@@ -262,17 +266,11 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             throw new NoProviderError();
         }
 
-        const network = getNetwork((await signer.provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
-        }
-
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), signer);
         let contractTx: ContractTransaction;
         const account: string = await signer.getAddress();
         const nonce = await shopContract.nonceOf(account);
-        const message = ContractUtils.getShopAccountMessage(shopId, account, nonce, network.chainId);
+        const message = ContractUtils.getShopAccountMessage(shopId, account, nonce, this.web3.getChainId());
         const signature = await ContractUtils.signMessage(signer, message);
 
         const param = {
@@ -290,7 +288,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             signature
         };
 
-        const res = await Network.post(await this.getEndpoint("/v1/shop/update/approval"), param);
+        const res = await Network.post(await this.relay.getEndpoint("/v1/shop/update/approval"), param);
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }
@@ -335,17 +333,11 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             throw new NoProviderError();
         }
 
-        const network = getNetwork((await signer.provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
-        }
-
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), signer);
         let contractTx: ContractTransaction;
         const account: string = await signer.getAddress();
         const nonce = await shopContract.nonceOf(account);
-        const message = ContractUtils.getShopAccountMessage(shopId, account, nonce, network.chainId);
+        const message = ContractUtils.getShopAccountMessage(shopId, account, nonce, this.web3.getChainId());
         const signature = await ContractUtils.signMessage(signer, message);
 
         const param = {
@@ -363,7 +355,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             signature
         };
 
-        let res = await Network.post(await this.getEndpoint("/v1/shop/status/approval"), param);
+        let res = await Network.post(await this.relay.getEndpoint("/v1/shop/status/approval"), param);
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }
@@ -434,7 +426,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
      * @return {Promise<ShopRefundableData>} 반환가능금액
      */
     public async getRefundableAmount(shopId: BytesLike): Promise<ShopRefundableData> {
-        const res = await Network.get(await this.getEndpoint(`/v1/shop/refundable/${shopId}`));
+        const res = await Network.get(await this.relay.getEndpoint(`/v1/shop/refundable/${shopId}`));
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }
@@ -458,18 +450,18 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             throw new NoProviderError();
         }
 
-        const network = getNetwork((await signer.provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
-        }
-
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), signer);
         let contractTx: ContractTransaction;
         const account: string = await signer.getAddress();
         const adjustedAmount = ContractUtils.zeroGWEI(amount);
         const nonce = await shopContract.nonceOf(account);
-        const message = ContractUtils.getShopRefundMessage(shopId, account, adjustedAmount, nonce, network.chainId);
+        const message = ContractUtils.getShopRefundMessage(
+            shopId,
+            account,
+            adjustedAmount,
+            nonce,
+            this.web3.getChainId()
+        );
         const signature = await ContractUtils.signMessage(signer, message);
 
         const param = {
@@ -487,7 +479,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             signature
         };
 
-        const res = await Network.post(await this.getEndpoint("/v1/shop/refund"), param);
+        const res = await Network.post(await this.relay.getEndpoint("/v1/shop/refund"), param);
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }
@@ -525,12 +517,6 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             throw new NoProviderError();
         }
 
-        const network = getNetwork((await signer.provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
-        }
-
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), signer);
         const account: string = await signer.getAddress();
         return await shopContract.getShopsOfAccount(account, BigNumber.from(from), BigNumber.from(to));
@@ -542,12 +528,6 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             throw new NoSignerError();
         } else if (!signer.provider) {
             throw new NoProviderError();
-        }
-
-        const network = getNetwork((await signer.provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
         }
 
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), signer);
@@ -565,17 +545,11 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             throw new NoProviderError();
         }
 
-        const network = getNetwork((await signer.provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
-        }
-
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), signer);
         let contractTx: ContractTransaction;
         const account: string = await signer.getAddress();
         const nonce = await shopContract.nonceOf(account);
-        const message = ContractUtils.getShopAccountMessage(shopId, account, nonce, network.chainId);
+        const message = ContractUtils.getShopAccountMessage(shopId, account, nonce, this.web3.getChainId());
         const signature = await ContractUtils.signMessage(signer, message);
 
         const param = {
@@ -591,7 +565,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             signature
         };
 
-        const res = await Network.post(await this.getEndpoint("/v1/shop/account/delegator/create"), param);
+        const res = await Network.post(await this.relay.getEndpoint("/v1/shop/account/delegator/create"), param);
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }
@@ -603,7 +577,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             delegator,
             account,
             nonce2,
-            network.chainId
+            this.web3.getChainId()
         );
         const signature2 = await ContractUtils.signMessage(signer, message2);
         const param2 = {
@@ -613,7 +587,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             signature: signature2
         };
 
-        const res2 = await Network.post(await this.getEndpoint("/v1/shop/account/delegator/save"), param2);
+        const res2 = await Network.post(await this.relay.getEndpoint("/v1/shop/account/delegator/save"), param2);
         if (res2.code !== 0) {
             throw new InternalServerError(res2?.error?.message ?? "");
         }
@@ -645,12 +619,6 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             throw new NoProviderError();
         }
 
-        const network = getNetwork((await signer.provider.getNetwork()).chainId);
-        const networkName = network.name as SupportedNetwork;
-        if (!SupportedNetworkArray.includes(networkName)) {
-            throw new UnsupportedNetworkError(networkName);
-        }
-
         const shopContract: Shop = Shop__factory.connect(this.web3.getShopAddress(), signer);
         let contractTx: ContractTransaction;
         const account: string = await signer.getAddress();
@@ -661,7 +629,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             delegator,
             account,
             nonce,
-            network.chainId
+            this.web3.getChainId()
         );
         const signature = await ContractUtils.signMessage(signer, message);
 
@@ -679,7 +647,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             signature
         };
 
-        const res = await Network.post(await this.getEndpoint("/v1/shop/account/delegator/save"), param);
+        const res = await Network.post(await this.relay.getEndpoint("/v1/shop/account/delegator/save"), param);
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }
@@ -723,7 +691,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
             pageSize,
             actions: actions.join(",")
         };
-        const res = await Network.get(await this.getEndpoint(`/v1/shop/history/${shopId}`), params);
+        const res = await Network.get(await this.relay.getEndpoint(`/v1/shop/history/${shopId}`), params);
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }
@@ -756,7 +724,7 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
     }
 
     public async getEstimatedProvideHistory(shopId: BytesLike): Promise<any[]> {
-        const res = await Network.get(await this.getEndpoint(`/v1/purchase/shop/provide/${shopId.toString()}`));
+        const res = await Network.get(await this.relay.getEndpoint(`/v1/purchase/shop/provide/${shopId.toString()}`));
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }
@@ -765,7 +733,9 @@ export class ShopMethods extends ClientCore implements IShopMethods, IClientHttp
     }
 
     public async getTotalEstimatedProvideHistory(shopId: BytesLike): Promise<any[]> {
-        const res = await Network.get(await this.getEndpoint(`/v1/purchase/shop/provide/total/${shopId.toString()}`));
+        const res = await Network.get(
+            await this.relay.getEndpoint(`/v1/purchase/shop/provide/total/${shopId.toString()}`)
+        );
         if (res.code !== 0) {
             throw new InternalServerError(res?.error?.message ?? "");
         }

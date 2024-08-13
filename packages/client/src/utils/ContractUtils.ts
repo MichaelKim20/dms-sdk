@@ -17,6 +17,8 @@ import { keccak256 } from "@ethersproject/keccak256";
 import { verifyMessage } from "@ethersproject/wallet";
 import { randomBytes } from "@ethersproject/random";
 import { LoyaltyNetworkID } from "../interfaces";
+import { PhoneNumberFormat, PhoneNumberUtil } from "google-libphonenumber";
+import { InvalidPhoneNumber } from "./errors";
 
 export class ContractUtils {
     /**
@@ -52,7 +54,16 @@ export class ContractUtils {
     }
 
     public static getPhoneHash(phone: string): string {
-        const encodedResult = defaultAbiCoder.encode(["string", "string"], ["BOSagora Phone Number", phone]);
+        const phoneUtil = PhoneNumberUtil.getInstance();
+        const number = phoneUtil.parseAndKeepRawInput(phone, "ZZ");
+        if (!phoneUtil.isValidNumber(number)) {
+            throw new InvalidPhoneNumber();
+        }
+        const reformattedPhoneNumber = phoneUtil.format(number, PhoneNumberFormat.INTERNATIONAL);
+        const encodedResult = defaultAbiCoder.encode(
+            ["string", "string"],
+            ["BOSagora Phone Number", reformattedPhoneNumber]
+        );
         return keccak256(encodedResult);
     }
 
@@ -442,6 +453,51 @@ export class ContractUtils {
         return arrayify(keccak256(encodedResult));
     }
 
+    public static getPurchasesProposeMessage(
+        height: BigNumberish,
+        purchases: {
+            purchaseId: string;
+            amount: BigNumberish;
+            loyalty: BigNumberish;
+            currency: string;
+            shopId: BytesLike;
+            account: string;
+            phone: BytesLike;
+            sender: string;
+        }[],
+        signatures: BytesLike[],
+        chainId: BigNumberish
+    ): Uint8Array {
+        const messages: BytesLike[] = [];
+        for (const elem of purchases) {
+            const encodedData = defaultAbiCoder.encode(
+                ["string", "uint256", "uint256", "string", "bytes32", "address", "bytes32", "address", "uint256"],
+                [
+                    elem.purchaseId,
+                    elem.amount,
+                    elem.loyalty,
+                    elem.currency,
+                    elem.shopId,
+                    elem.account,
+                    elem.phone,
+                    elem.sender,
+                    chainId
+                ]
+            );
+            messages.push(keccak256(encodedData));
+        }
+        const signaturesMessages: BytesLike[] = [];
+        for (const elem of signatures) {
+            const encodedData = defaultAbiCoder.encode(["bytes32", "uint256"], [keccak256(elem), chainId]);
+            signaturesMessages.push(keccak256(encodedData));
+        }
+        const encodedResult = defaultAbiCoder.encode(
+            ["uint256", "uint256", "bytes32[]", "bytes32[]"],
+            [height, purchases.length, messages, signaturesMessages]
+        );
+        return arrayify(keccak256(encodedResult));
+    }
+
     public static getCurrencyMessage(
         height: BigNumberish,
         rates: { symbol: string; rate: BigNumberish }[],
@@ -502,6 +558,37 @@ export class ContractUtils {
             [chainId, tokenAddress, from, to, amount, nonce, expiry]
         );
         return arrayify(keccak256(encodedResult));
+    }
+
+    public static async getPurchaseSignature(
+        signer: Signer,
+        purchase: {
+            purchaseId: string;
+            amount: BigNumberish;
+            loyalty: BigNumberish;
+            currency: string;
+            shopId: BytesLike;
+            account: string;
+            phone: BytesLike;
+            sender: string;
+        },
+        chainId: BigNumberish
+    ): Promise<string> {
+        const encodedData = defaultAbiCoder.encode(
+            ["string", "uint256", "uint256", "string", "bytes32", "address", "bytes32", "address", "uint256"],
+            [
+                purchase.purchaseId,
+                purchase.amount,
+                purchase.loyalty,
+                purchase.currency,
+                purchase.shopId,
+                purchase.account,
+                purchase.phone,
+                purchase.sender,
+                chainId
+            ]
+        );
+        return signer.signMessage(arrayify(keccak256(encodedData)));
     }
 
     public static async signMessage(signer: Signer, message: Uint8Array): Promise<string> {

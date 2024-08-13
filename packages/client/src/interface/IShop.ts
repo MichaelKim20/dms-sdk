@@ -1,4 +1,4 @@
-import { IClientCore, IClientHttpCore } from "../client-common";
+import { IClientCore } from "../client-common";
 import { BigNumber } from "@ethersproject/bignumber";
 import {
     AddShopStepValue,
@@ -9,7 +9,8 @@ import {
     RemoveDelegateStepValue,
     RefundShopStepValue,
     ShopAction,
-    ShopRefundableData
+    ShopRefundableData,
+    IShopSummary
 } from "../interfaces";
 import { BytesLike } from "@ethersproject/bytes";
 
@@ -18,9 +19,12 @@ export interface IShop {
 }
 
 /** Defines the shape of the general purpose Client class */
-export interface IShopMethods extends IClientCore, IClientHttpCore {
+export interface IShopMethods extends IClientCore {
+    getAccount: () => Promise<string>;
     // Common
     getShopInfo: (shopId: BytesLike) => Promise<ShopData>;
+
+    getSummary: (shopId: BytesLike) => Promise<IShopSummary>;
 
     // Add
     isAvailableId: (shopId: BytesLike) => Promise<boolean>;

@@ -39,17 +39,17 @@ describe("LoyaltyBridge", () => {
     const users: IUserData[] = JSON.parse(fs.readFileSync("test/helper/users.json", "utf8")) as IUserData[];
 
     beforeAll(async () => {
-        contextParams.signer = new Wallet(users[0].privateKey);
+        contextParams.privateKey = users[0].privateKey;
         const ctx = new Context(contextParams);
         client = new Client(ctx);
     });
 
     beforeAll(async () => {
-        client.useSigner(new Wallet(users[0].privateKey));
+        client.usePrivateKey(users[0].privateKey);
     });
 
     it("Server Health Checking", async () => {
-        const isUp = await client.ledger.isRelayUp();
+        const isUp = await client.ledger.relay.isUp();
         expect(isUp).toEqual(true);
     });
 
@@ -60,11 +60,11 @@ describe("LoyaltyBridge", () => {
     it("Test of the deposit via bridge", async () => {
         const userIdx = 0;
         const sideChainInfo = await client.ledger.getChainInfoOfSideChain();
-        const fee = sideChainInfo.network.bridgeFee;
+        const fee = sideChainInfo.network.loyaltyBridgeFee;
         const amount = Amount.make(100, 18).value;
         const oldBalanceMainChain = await client.ledger.getMainChainBalance(users[userIdx].address);
         const oldBalanceLedger = await client.ledger.getTokenBalance(users[userIdx].address);
-        client.useSigner(new Wallet(users[userIdx].privateKey, NodeInfo.createProvider()));
+        client.usePrivateKey(users[userIdx].privateKey);
         let depositId: string = "";
         for await (const step of client.ledger.depositViaBridge(amount)) {
             switch (step.key) {
@@ -129,11 +129,11 @@ describe("LoyaltyBridge", () => {
     it("Test of the withdraw via bridge", async () => {
         const userIdx = 0;
         const mainChainInfo = await client.ledger.getChainInfoOfMainChain();
-        const fee = mainChainInfo.network.bridgeFee;
+        const fee = mainChainInfo.network.loyaltyBridgeFee;
         const amount = Amount.make(100, 18).value;
         const oldBalanceMainChain = await client.ledger.getMainChainBalance(users[userIdx].address);
         const oldBalanceLedger = await client.ledger.getTokenBalance(users[userIdx].address);
-        client.useSigner(new Wallet(users[userIdx].privateKey, NodeInfo.createProvider()));
+        client.usePrivateKey(users[userIdx].privateKey);
         let depositId: string = "";
         for await (const step of client.ledger.withdrawViaBridge(amount)) {
             switch (step.key) {

@@ -107,7 +107,7 @@ describe("Ledger", () => {
 
     let client: Client;
     beforeAll(async () => {
-        contextParams.signer = userWallets[0];
+        contextParams.privateKey = userWallets[0].privateKey;
         const ctx = new Context(contextParams);
         client = new Client(ctx);
     });
@@ -117,7 +117,7 @@ describe("Ledger", () => {
     let phone: string;
     let phoneHash: string;
     beforeAll(async () => {
-        client.useSigner(userWallets[0]);
+        client.usePrivateKey(userWallets[0].privateKey);
         signer = client.web3.getConnectedSigner();
         userAddress = await signer.getAddress();
         phone = NodeInfo.getPhoneNumber();
@@ -129,7 +129,7 @@ describe("Ledger", () => {
     });
 
     it("Server Health Checking", async () => {
-        const isUp = await client.ledger.isRelayUp();
+        const isUp = await client.ledger.relay.isUp();
         expect(isUp).toEqual(true);
     });
 
@@ -150,7 +150,7 @@ describe("Ledger", () => {
         );
 
         for (const elem of shopData) {
-            elem.shopId = ContractUtils.getShopId(elem.wallet.address, LoyaltyNetworkID.ACC);
+            elem.shopId = ContractUtils.getShopId(elem.wallet.address, LoyaltyNetworkID.KIOS_TESTNET);
         }
         await NodeInfo.addShopData(contractInfo, shopData);
     });
@@ -166,11 +166,28 @@ describe("Ledger", () => {
             shopId: shopData[purchaseData[0].shopIndex].shopId,
             account: AddressZero,
             phone: phoneHash,
-            sender: await accounts[AccountIndex.FOUNDATION].getAddress()
+            sender: await accounts[AccountIndex.FOUNDATION].getAddress(),
+            signature: ""
         };
-        const purchaseMessage = ContractUtils.getPurchasesMessage(0, [purchaseParams], NodeInfo.CHAIN_ID);
-        const signatures = validatorWallets.map((m) => ContractUtils.signMessage(m, purchaseMessage));
-        await contractInfo.loyaltyProvider.connect(validatorWallets[4]).savePurchase(0, [purchaseParams], signatures);
+        purchaseParams.signature = await ContractUtils.getPurchaseSignature(
+            accounts[AccountIndex.FOUNDATION],
+            purchaseParams,
+            NodeInfo.getChainId()
+        );
+        const purchaseMessage = ContractUtils.getPurchasesMessage(0, [purchaseParams], NodeInfo.getChainId());
+        const signatures = await Promise.all(
+            validatorWallets.map((m) => ContractUtils.signMessage(m, purchaseMessage))
+        );
+        const proposeMessage = ContractUtils.getPurchasesProposeMessage(
+            0,
+            [purchaseParams],
+            signatures,
+            NodeInfo.getChainId()
+        );
+        const proposerSignature = await ContractUtils.signMessage(validatorWallets[4], proposeMessage);
+        await contractInfo.loyaltyProvider
+            .connect(validatorWallets[4])
+            .savePurchase(0, [purchaseParams], signatures, proposerSignature);
     });
 
     it("Save Purchase Data 2", async () => {
@@ -184,11 +201,28 @@ describe("Ledger", () => {
             shopId: shopData[purchaseData[0].shopIndex].shopId,
             account: userAddress,
             phone: phoneHash,
-            sender: await accounts[AccountIndex.FOUNDATION].getAddress()
+            sender: await accounts[AccountIndex.FOUNDATION].getAddress(),
+            signature: ""
         };
-        const purchaseMessage = ContractUtils.getPurchasesMessage(0, [purchaseParams], NodeInfo.CHAIN_ID);
-        const signatures = validatorWallets.map((m) => ContractUtils.signMessage(m, purchaseMessage));
-        await contractInfo.loyaltyProvider.connect(validatorWallets[4]).savePurchase(0, [purchaseParams], signatures);
+        purchaseParams.signature = await ContractUtils.getPurchaseSignature(
+            accounts[AccountIndex.FOUNDATION],
+            purchaseParams,
+            NodeInfo.getChainId()
+        );
+        const purchaseMessage = ContractUtils.getPurchasesMessage(0, [purchaseParams], NodeInfo.getChainId());
+        const signatures = await Promise.all(
+            validatorWallets.map((m) => ContractUtils.signMessage(m, purchaseMessage))
+        );
+        const proposeMessage = ContractUtils.getPurchasesProposeMessage(
+            0,
+            [purchaseParams],
+            signatures,
+            NodeInfo.getChainId()
+        );
+        const proposerSignature = await ContractUtils.signMessage(validatorWallets[4], proposeMessage);
+        await contractInfo.loyaltyProvider
+            .connect(validatorWallets[4])
+            .savePurchase(0, [purchaseParams], signatures, proposerSignature);
     });
 
     const purchaseAmount = Amount.make(purchaseData[0].amount, 18).value.mul(1000);
@@ -212,7 +246,7 @@ describe("Ledger", () => {
 
     it("Link phone-wallet", async () => {
         const nonce = await contractInfo.phoneLinkCollection.nonceOf(userAddress);
-        const msg = ContractUtils.getRequestMessage(phoneHash, await signer.getAddress(), nonce, NodeInfo.CHAIN_ID);
+        const msg = ContractUtils.getRequestMessage(phoneHash, await signer.getAddress(), nonce, NodeInfo.getChainId());
         const signature = await ContractUtils.signMessage(signer, msg);
         const requestId = ContractUtils.getRequestId(phoneHash, userAddress, nonce);
         //Add Phone
