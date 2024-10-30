@@ -52,7 +52,7 @@ export class Helper {
         const data: {
             phone: string;
             privateKey: string;
-        } = JSON.parse(fs.readFileSync("./data/assistant_info.json", "utf8"));
+        } = JSON.parse(fs.readFileSync("./data/agent_info.json", "utf8"));
         return {
             phone: data.phone,
             wallet: new Wallet(data.privateKey),

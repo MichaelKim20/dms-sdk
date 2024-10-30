@@ -1,6 +1,5 @@
 import { Helper } from "../utils";
 import { Client, Context, ContextBuilder, NormalSteps } from "acc-sdk-client-v2";
-import { BOACoin } from "../../src/Amount";
 
 async function main() {
     const userInfo = Helper.loadUserInfo();
@@ -9,8 +8,10 @@ async function main() {
     if (Helper.WEB3_ENDPOINT !== "") contextParams.web3Provider = Helper.WEB3_ENDPOINT;
     const context: Context = new Context(contextParams);
     const client = new Client(context);
-    console.log(`client.ledger.getAssistant() : ${await client.ledger.getAssistant()}`);
-    for await (const step of client.ledger.unregisterAssistant()) {
+    console.log(`client.ledger.getAgentOfProvision() : ${await client.ledger.getAgentOfProvision()}`);
+    const agentInfo = Helper.loadAssistantInfo();
+    console.log(`agentInfo.wallet.address : ${agentInfo.wallet.address}`);
+    for await (const step of client.ledger.registerAgentOfProvision(agentInfo.wallet.address)) {
         switch (step.key) {
             case NormalSteps.PREPARED:
                 console.log("NormalSteps.PREPARED");
@@ -25,7 +26,7 @@ async function main() {
                 throw new Error("Unexpected change payable point step: " + JSON.stringify(step, null, 2));
         }
     }
-    console.log(`client.ledger.getAssistant() : ${await client.ledger.getAssistant()}`);
+    console.log(`client.ledger.getAgentOfProvision() : ${await client.ledger.getAgentOfProvision()}`);
 }
 
 // We recommend this pattern to be able to use async/await everywhere

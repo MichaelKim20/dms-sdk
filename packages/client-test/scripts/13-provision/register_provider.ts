@@ -1,8 +1,5 @@
 import { Helper } from "../utils";
 import { Client, Context, ContextBuilder } from "acc-sdk-client-v2";
-import { BOACoin } from "../../src/Amount";
-import { Ledger, Ledger__factory } from "acc-contracts-lib-v2";
-import { Wallet } from "ethers";
 
 async function main() {
     const userInfo = Helper.loadUserInfo();
@@ -12,9 +9,7 @@ async function main() {
     const context: Context = new Context(contextParams);
     const client = new Client(context);
 
-    const contractOwner = new Wallet(process.env.CONTRACT_OWNER || "", client.web3.getProvider());
-    const ledgerContract: Ledger = Ledger__factory.connect(client.web3.getLedgerAddress(), contractOwner);
-    await ledgerContract.registerProvider(userInfo.wallet.address);
+    await client.ledger.registerProvider();
 }
 
 // We recommend this pattern to be able to use async/await everywhere
